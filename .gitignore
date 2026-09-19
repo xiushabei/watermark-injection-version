@@ -9,5 +9,5 @@
 *.dll
 *.raw
 
-# 50MB baked-in font blob from the third-party reference project
-injecting Version/参考/InfiniteGUI-DLL/fonts/AlibabaPuHuiTi-3-85-Bold.h
+# Third-party reference project (kept locally, not tracked)
+injecting Version/参考/
