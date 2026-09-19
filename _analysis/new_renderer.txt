@@ -1,0 +1,317 @@
+// ---------- Modern OpenGL renderer ----------
+// Minecraft 1.17+ uses OpenGL 3.2 Core Profile where all fixed-function APIs
+// (glBegin/glOrtho/glPushAttrib/wglUseFontBitmaps) are ILLEGAL and break the
+// game's GL state. This renderer uses a shader + VBO pipeline that works on
+// both Core (3.2+) and Compatibility (2.1, e.g. MC 1.8.9) contexts.
+namespace OverlayGL {
+    static GLuint g_prog = 0;
+    static GLuint g_vbo = 0;
+    static GLuint g_vao = 0;
+    static GLuint g_whiteTex = 0;
+    static GLint g_uMVP = -1, g_uColor = -1, g_uTex = -1;
+    static GLuint g_aPos = 0, g_aUV = 0;
+    static bool g_inited = false;
+    static bool g_useVAO = false;   // VAOs require GL 3.0+
+    static bool g_use150 = false;   // GLSL 150 core vs 120 fallback
+
+    static GLuint compileShader(GLenum type, const char* src) {
+        GLuint s = glCreateShader(type);
+        glShaderSource(s, 1, &src, nullptr);
+        glCompileShader(s);
+        return s;
+    }
+
+    static bool buildProgram() {
+        static const char* vs150 =
+            "#version 150 core\n"
+            "in vec2 aPos; in vec2 aUV; uniform mat4 uMVP; out vec2 vUV;\n"
+            "void main(){ vUV = aUV; gl_Position = uMVP * vec4(aPos, 0.0, 1.0); }";
+        static const char* fs150 =
+            "#version 150 core\n"
+            "in vec2 vUV; uniform sampler2D uTex; uniform vec4 uColor; out vec4 oColor;\n"
+            "void main(){ oColor = texture(uTex, vUV) * uColor; }";
+        static const char* vs120 =
+            "#version 120\n"
+            "attribute vec2 aPos; attribute vec2 aUV; uniform mat4 uMVP; varying vec2 vUV;\n"
+            "void main(){ vUV = aUV; gl_Position = uMVP * vec4(aPos, 0.0, 1.0); }";
+        static const char* fs120 =
+            "#version 120\n"
+            "varying vec2 vUV; uniform sampler2D uTex; uniform vec4 uColor;\n"
+            "void main(){ gl_FragColor = texture2D(uTex, vUV) * uColor; }";
+
+        const char* vs = g_use150 ? vs150 : vs120;
+        const char* fs = g_use150 ? fs150 : fs120;
+        GLuint v = compileShader(GL_VERTEX_SHADER, vs);
+        GLuint f = compileShader(GL_FRAGMENT_SHADER, fs);
+        GLuint p = glCreateProgram();
+        glAttachShader(p, v);
+        glAttachShader(p, f);
+        glLinkProgram(p);
+        GLint ok = 0;
+        glGetProgramiv(p, GL_LINK_STATUS, &ok);
+        glDeleteShader(v);
+        glDeleteShader(f);
+        if (!ok) {
+            glDeleteProgram(p);
+            return false;
+        }
+        g_prog = p;
+        g_uMVP = glGetUniformLocation(p, "uMVP");
+        g_uColor = glGetUniformLocation(p, "uColor");
+        g_uTex = glGetUniformLocation(p, "uTex");
+        g_aPos = (GLuint)glGetAttribLocation(p, "aPos");
+        g_aUV = (GLuint)glGetAttribLocation(p, "aUV");
+        return true;
+    }
+
+    // Must be called with the game GL context current (render thread).
+    static bool EnsureInit() {
+        if (g_inited) return g_prog != 0;
+
+        // Detect context version: GL_MAJOR_VERSION (3.0+); fall back to string parse
+        GLint major = 2, minor = 1;
+        const char* verStr = (const char*)glGetString(GL_VERSION);
+        GLint mj = 0;
+        glGetIntegerv(GL_MAJOR_VERSION, &mj);
+        if (mj > 0) {
+            glGetIntegerv(GL_MAJOR_VERSION, &major);
+            glGetIntegerv(GL_MINOR_VERSION, &minor);
+        } else if (verStr) {
+            sscanf_s(verStr, "%d.%d", &major, &minor);
+        }
+        g_use150 = (major > 3) || (major == 3 && minor >= 2);
+        g_useVAO = (major >= 3);
+
+        if (!buildProgram()) {
+            // Retry with legacy GLSL if the modern shader failed
+            if (g_use150) {
+                g_use150 = false;
+                if (!buildProgram()) { g_inited = true; return false; }
+            } else {
+                g_inited = true;
+                return false;
+            }
+        }
+
+        // 1x1 white texture for solid-color quads
+        unsigned char white[4] = {255, 255, 255, 255};
+        glGenTextures(1, &g_whiteTex);
+        GLint prevTex = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+        glBindTexture(GL_TEXTURE_2D, g_whiteTex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, white);
+        glBindTexture(GL_TEXTURE_2D, (GLuint)prevTex);
+
+        glGenBuffers(1, &g_vbo);
+        if (g_useVAO) glGenVertexArrays(1, &g_vao);
+
+        g_inited = true;
+        OutputDebugStringA(g_use150
+            ? "[WatermarkDLL] OverlayGL: GLSL 150 core pipeline ready\n"
+            : "[WatermarkDLL] OverlayGL: GLSL 120 pipeline ready\n");
+        return true;
+    }
+
+    static void ortho2D(float l, float r, float b, float t, float* m) {
+        // Column-major orthographic projection, top-left origin
+        for (int i = 0; i < 16; i++) m[i] = 0.0f;
+        m[0] = 2.0f / (r - l);
+        m[5] = 2.0f / (t - b);
+        m[10] = -1.0f;
+        m[12] = -(r + l) / (r - l);
+        m[13] = -(t + b) / (t - b);
+        m[15] = 1.0f;
+    }
+
+    // Draw a textured (or white) quad in raw window pixel coordinates
+    static void DrawQuad(GLuint tex, float x, float y, float w, float h,
+                         float r, float g, float b, float a) {
+        if (!g_prog) return;
+        GLint viewport[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+        float m[16];
+        ortho2D(0.0f, (float)viewport[2], (float)viewport[3], 0.0f, m);
+
+        float verts[4][4] = {
+            {x,     y,     0.0f, 0.0f},
+            {x,     y + h, 0.0f, 1.0f},
+            {x + w, y + h, 1.0f, 1.0f},
+            {x + w, y,     1.0f, 0.0f},
+        };
+
+        glUseProgram(g_prog);
+        glUniformMatrix4fv(g_uMVP, 1, GL_FALSE, m);
+        glUniform4f(g_uColor, r, g, b, a);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex ? tex : g_whiteTex);
+        glUniform1i(g_uTex, 0);
+
+        GLint prevVbo = 0;
+        glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prevVbo);
+        if (g_useVAO) glBindVertexArray(g_vao);
+        glBindBuffer(GL_ARRAY_BUFFER, g_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STREAM_DRAW);
+        glEnableVertexAttribArray(g_aPos);
+        glVertexAttribPointer(g_aPos, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+        glEnableVertexAttribArray(g_aUV);
+        glVertexAttribPointer(g_aUV, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        glDisableVertexAttribArray(g_aPos);
+        glDisableVertexAttribArray(g_aUV);
+        glBindBuffer(GL_ARRAY_BUFFER, (GLuint)prevVbo);
+        if (g_useVAO) glBindVertexArray(0);
+    }
+} // namespace OverlayGL
+
+// Solid-color rect helper (window pixel coordinates)
+static void fillRect(int x, int y, int w, int h, float r, float g, float b, float a) {
+    OverlayGL::DrawQuad(0, (float)x, (float)y, (float)w, (float)h, r, g, b, a);
+}
+
+// ---------- Text rendering via GDI-rasterized label textures ----------
+// (wglUseFontBitmaps is illegal in Core Profile; we rasterize whole labels
+//  into DIBs once and draw them as textured quads instead.)
+struct LabelTex { GLuint tex = 0; int w = 0, h = 0; };
+static std::map<std::wstring, LabelTex> g_labelCache;
+
+static const LabelTex& GetLabel(const wchar_t* text) {
+    auto it = g_labelCache.find(text);
+    if (it != g_labelCache.end()) return it->second;
+
+    LabelTex lt;
+    g_labelCache[text] = lt; // placeholder in case of failure
+    LabelTex& cached = g_labelCache[text];
+
+    HDC memDC = CreateCompatibleDC(nullptr);
+    if (!memDC) return cached;
+    HFONT font = CreateFontW(-15, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei");
+    if (!font) { DeleteDC(memDC); return cached; }
+
+    HGDIOBJ oldFont = SelectObject(memDC, font);
+    SIZE sz = {0, 0};
+    int len = (int)wcslen(text);
+    if (!GetTextExtentPoint32W(memDC, text, len, &sz) || sz.cx <= 0 || sz.cy <= 0) {
+        SelectObject(memDC, oldFont); DeleteObject(font); DeleteDC(memDC);
+        return cached;
+    }
+
+    BITMAPINFO bmi = {};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = sz.cx;
+    bmi.bmiHeader.biHeight = -sz.cy;  // top-down
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(memDC, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (!bmp) {
+        SelectObject(memDC, oldFont); DeleteObject(font); DeleteDC(memDC);
+        return cached;
+    }
+    HGDIOBJ oldBmp = SelectObject(memDC, bmp);
+    SetBkMode(memDC, TRANSPARENT);
+    SetTextColor(memDC, RGB(255, 255, 255));
+    ExtTextOutW(memDC, 0, 0, 0, nullptr, text, len, nullptr);
+
+    // BGRX DIB -> RGBA texture with luminance alpha (white text)
+    int pxCount = sz.cx * sz.cy;
+    std::vector<unsigned char> rgba(pxCount * 4);
+    unsigned char* src = (unsigned char*)bits;
+    for (int i = 0; i < pxCount; i++) {
+        unsigned char bV = src[i * 4 + 0], gV = src[i * 4 + 1], rV = src[i * 4 + 2];
+        unsigned char aV = (unsigned char)(((int)rV + (int)gV + (int)bV) / 3);
+        rgba[i * 4 + 0] = 255;
+        rgba[i * 4 + 1] = 255;
+        rgba[i * 4 + 2] = 255;
+        rgba[i * 4 + 3] = aV;
+    }
+
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    if (tex) {
+        GLint prevTex = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, sz.cx, sz.cy, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba.data());
+        glBindTexture(GL_TEXTURE_2D, (GLuint)prevTex);
+    }
+
+    SelectObject(memDC, oldBmp);
+    SelectObject(memDC, oldFont);
+    DeleteObject(bmp);
+    DeleteObject(font);
+    DeleteDC(memDC);
+
+    cached.tex = tex;
+    cached.w = sz.cx;
+    cached.h = sz.cy;
+    return cached;
+}
+
+// Draw text label (window pixel coordinates, white/colored via tint)
+static void DrawLabel(const wchar_t* text, int x, int y, float r, float g, float b) {
+    const LabelTex& lt = GetLabel(text);
+    if (!lt.tex) return;
+    OverlayGL::DrawQuad(lt.tex, (float)x, (float)y, (float)lt.w, (float)lt.h, r, g, b, 1.0f);
+}
+
+// Renderer
+void renderOverlay(ImageOverlay& overlay) {
+    int fi = overlay.getCurrentFrameIndex();
+    GLuint texture = overlay.getFrameTexture(fi);
+    if (texture == 0) return;
+
+    float x = (float)(overlay.cachedX * g_guiScale);
+    float y = (float)(overlay.cachedY * g_guiScale);
+    float w = (float)(overlay.cachedDisplayW * g_guiScale);
+    float h = (float)(overlay.cachedDisplayH * g_guiScale);
+    float alpha = overlay.isVisible() ? 1.0f : 0.3f;
+
+    OverlayGL::DrawQuad(texture, x, y, w, h, 1.0f, 1.0f, 1.0f, alpha);
+}
+
+void renderSelectionBorder(const ImageOverlay& overlay) {
+    float x1 = (float)(overlay.cachedX * g_guiScale - 1);
+    float y1 = (float)(overlay.cachedY * g_guiScale - 1);
+    float x2 = (float)((overlay.cachedX + overlay.cachedDisplayW) * g_guiScale + 1);
+    float y2 = (float)((overlay.cachedY + overlay.cachedDisplayH) * g_guiScale + 1);
+    float t = 2.0f;
+
+    fillRect((int)x1, (int)y1, (int)(x2 - x1), (int)t, 1.0f, 1.0f, 0.0f, 1.0f);          // top
+    fillRect((int)x1, (int)(y2 - t), (int)(x2 - x1), (int)t, 1.0f, 1.0f, 0.0f, 1.0f);    // bottom
+    fillRect((int)x1, (int)y1, (int)t, (int)(y2 - y1), 1.0f, 1.0f, 0.0f, 1.0f);          // left
+    fillRect((int)(x2 - t), (int)y1, (int)t, (int)(y2 - y1), 1.0f, 1.0f, 0.0f, 1.0f);    // right
+
+    float hs = 8.0f;
+    float cx = (float)((overlay.cachedX + overlay.cachedDisplayW) * g_guiScale);
+    float cy = (float)((overlay.cachedY + overlay.cachedDisplayH) * g_guiScale);
+    fillRect((int)(cx - hs / 2), (int)(cy - hs / 2), (int)hs, (int)hs, 0.0f, 1.0f, 0.0f, 1.0f);
+}
+
+// Menu items (mirrors mod's context menu)
+static const wchar_t* MENU_ITEMS[] = {
+    L"定点移动",
+    L"随机运动",
+    L"随机展示",
+    L"重置运动",
+    L"按键绑定",
+    L"删除"
+};
+static const int MENU_ITEM_COUNT = 6;
+static const int MENU_WIDTH = 110;
+static const int MENU_ITEM_H = 22;
+
+// Mouse tracking for menu hover highlight
+static int g_mouseX = 0;
+static int g_mouseY = 0;

@@ -1,0 +1,22 @@
+{
+    "schemaVersion": 1,
+    "id": "watermark",
+    "version": "${version}",
+    "name": "Watermark v1",
+    "description": "Drag and drop images/GIFs onto screen. Movement modes: waypoints, random move, random position. Toggle with keybind.",
+    "authors": ["小猫弟"],
+    "contact": {},
+    "license": "MIT",
+    "environment": "client",
+    "entrypoints": {
+        "client": [
+            "com.overlayimage.OverlayImageMod"
+        ]
+    },
+    "depends": {
+        "fabricloader": ">=0.16.9",
+        "minecraft": "~1.21.4",
+        "java": ">=21",
+        "fabric-api": "*"
+    }
+}

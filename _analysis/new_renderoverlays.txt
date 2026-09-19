@@ -1,0 +1,118 @@
+void renderOverlays() {
+    // F1 hides the HUD in Minecraft - skip rendering entirely (mirrors mod's hudHidden check)
+    if (GetAsyncKeyState(VK_F1) & 0x8000) return;
+    if (!OverlayGL::EnsureInit() || !OverlayGL::g_prog) return;
+
+    // Save/restore game GL state explicitly (glPushAttrib is illegal in core profile)
+    GLboolean savedDepthTest = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean savedBlend = glIsEnabled(GL_BLEND);
+    GLboolean savedCull = glIsEnabled(GL_CULL_FACE);
+    GLboolean savedDepthMask = GL_TRUE;
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &savedDepthMask);
+    GLint savedProg = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &savedProg);
+    GLint savedTex = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &savedTex);
+    GLint savedActiveTex = GL_TEXTURE0;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &savedActiveTex);
+    GLint savedVao = 0;
+    if (OverlayGL::g_useVAO) glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &savedVao);
+
+    glDisable(GL_DEPTH_TEST);
+    glDepthMask(GL_FALSE);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Waypoint picking mode: dim screen, show markers + hint (mirrors mod's renderWaypointPicker)
+    if (g_overlayManager.pickingWaypoints) {
+        fillRect(0, 0, g_screenW, g_screenH, 0.0f, 0.0f, 0.0f, 0.53f);
+        DrawLabel(L"左键添加标点(最多7个) | 右键撤销 | Enter确认 | Esc取消", 6, 6, 1.0f, 1.0f, 0.0f);
+
+        auto& wps = g_overlayManager.pendingWaypoints;
+        for (size_t i = 0; i < wps.size(); i++) {
+            int px = static_cast<int>(wps[i].xFraction * g_screenW);
+            int py = static_cast<int>(wps[i].yFraction * g_screenH);
+            int s = 12;
+            fillRect(px - s, py - s, s * 2, 1, 1.0f, 0.2f, 0.2f, 1.0f);  // top bar
+            fillRect(px - s, py + s, s * 2, 1, 1.0f, 0.2f, 0.2f, 1.0f);  // bottom bar
+            fillRect(px - s, py - s, 1, s * 2, 1.0f, 0.2f, 0.2f, 1.0f);  // left bar
+            fillRect(px + s, py - s, 1, s * 2, 1.0f, 0.2f, 0.2f, 1.0f);  // right bar
+            wchar_t num[8];
+            swprintf_s(num, L"%d", (int)i + 1);
+            DrawLabel(num, px - 7, py - 8, 1.0f, 0.2f, 0.2f);
+        }
+
+        goto restore;
+    }
+
+    // Key capture mode: dim screen + centered prompt (mirrors mod's renderKeyCaptureOverlay)
+    if (g_overlayManager.capturingKey) {
+        fillRect(0, 0, g_screenW, g_screenH, 0.0f, 0.0f, 0.0f, 0.67f);
+        const wchar_t* msg = L"请按下按键以绑定... (Esc取消 / Backspace清除)";
+        const LabelTex& lt = GetLabel(msg);
+        int tx = (g_screenW - lt.w) / 2;
+        int ty = g_screenH / 2 - 10;
+        if (tx < 0) tx = 0;
+        DrawLabel(msg, tx, ty, 1.0f, 1.0f, 1.0f);
+        goto restore;
+    }
+
+    // Render all overlays (cachedX/Y live in Minecraft scaled coordinates)
+    for (auto& overlay : g_overlayManager.overlays) {
+        if (!overlay->isVisible() && !g_overlayManager.interacting) continue;
+        overlay->updateFromScreenSize(g_screenW / g_guiScale, g_screenH / g_guiScale);
+        renderOverlay(*overlay);
+
+        if (g_overlayManager.interacting && overlay == g_overlayManager.selectedOverlay) {
+            renderSelectionBorder(*overlay);
+        }
+    }
+
+    // Render context menu if showing (6 items, Chinese, hover highlight)
+    if (g_showMenu && g_menuTarget) {
+        int menuW = MENU_WIDTH;
+        int itemH = MENU_ITEM_H;
+        int menuH = itemH * MENU_ITEM_COUNT;
+
+        int hoverIndex = -1;
+        if (g_mouseX >= g_menuX && g_mouseX <= g_menuX + menuW &&
+            g_mouseY >= g_menuY && g_mouseY <= g_menuY + menuH) {
+            hoverIndex = (g_mouseY - g_menuY) / itemH;
+        }
+
+        // Background
+        fillRect(g_menuX, g_menuY, menuW, menuH, 0.1f, 0.1f, 0.1f, 0.8f);
+
+        // Hover highlight
+        if (hoverIndex >= 0 && hoverIndex < MENU_ITEM_COUNT) {
+            fillRect(g_menuX + 1, g_menuY + hoverIndex * itemH + 1, menuW - 2, itemH - 1,
+                     0.27f, 0.53f, 0.8f, 0.27f);
+        }
+
+        // Border (4 thin rects) + separators
+        fillRect(g_menuX, g_menuY, menuW, 1, 0.67f, 0.67f, 0.67f, 1.0f);
+        fillRect(g_menuX, g_menuY + menuH - 1, menuW, 1, 0.67f, 0.67f, 0.67f, 1.0f);
+        fillRect(g_menuX, g_menuY, 1, menuH, 0.67f, 0.67f, 0.67f, 1.0f);
+        fillRect(g_menuX + menuW - 1, g_menuY, 1, menuH, 0.67f, 0.67f, 0.67f, 1.0f);
+        for (int i = 1; i < MENU_ITEM_COUNT; i++) {
+            fillRect(g_menuX + 2, g_menuY + i * itemH, menuW - 4, 1, 0.5f, 0.5f, 0.5f, 1.0f);
+        }
+
+        // Menu item text
+        for (int i = 0; i < MENU_ITEM_COUNT; i++) {
+            DrawLabel(MENU_ITEMS[i], g_menuX + 6, g_menuY + i * itemH + 3, 1.0f, 1.0f, 1.0f);
+        }
+    }
+
+restore:
+    // Restore game GL state
+    glUseProgram((GLuint)savedProg);
+    glActiveTexture((GLenum)savedActiveTex);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)savedTex);
+    if (OverlayGL::g_useVAO) glBindVertexArray((GLuint)savedVao);
+    if (savedDepthTest) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
+    glDepthMask(savedDepthMask);
+    if (savedBlend) glEnable(GL_BLEND); else glDisable(GL_BLEND);
+    if (savedCull) glEnable(GL_CULL_FACE); else glDisable(GL_CULL_FACE);
+}

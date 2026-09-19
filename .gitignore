@@ -1,0 +1,13 @@
+# Build outputs
+**/x64/
+**/.vs/
+*.obj
+*.res
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.raw
+
+# 50MB baked-in font blob from the third-party reference project
+injecting Version/参考/InfiniteGUI-DLL/fonts/AlibabaPuHuiTi-3-85-Bold.h

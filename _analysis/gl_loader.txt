@@ -1,0 +1,130 @@
+// ---------- Modern GL entry points ----------
+// opengl32.dll only exports GL 1.1 symbols; shader-era entry points must be
+// resolved at runtime (wglGetProcAddress with GetProcAddress fallback).
+#ifndef GL_VERTEX_SHADER
+#define GL_VERTEX_SHADER 0x8B31
+#define GL_FRAGMENT_SHADER 0x8B30
+#define GL_COMPILE_STATUS 0x8B81
+#define GL_LINK_STATUS 0x8B82
+#define GL_ARRAY_BUFFER 0x8892
+#define GL_STREAM_DRAW 0x88E0
+#define GL_ARRAY_BUFFER_BINDING 0x8894
+#define GL_VERTEX_ARRAY_BINDING 0x85B5
+#define GL_CURRENT_PROGRAM 0x8B8D
+#define GL_MAJOR_VERSION 0x821B
+#define GL_MINOR_VERSION 0x821C
+#endif
+#ifndef GL_TEXTURE0
+#define GL_TEXTURE0 0x84C0
+#define GL_ACTIVE_TEXTURE 0x84E0
+#endif
+
+typedef char GLchar;
+#ifndef GL_VERSION_1_5
+typedef ptrdiff_t GLsizeiptr;
+#endif
+
+typedef GLuint (APIENTRYP PFNGLCREATESHADERPROC)(GLenum);
+typedef void (APIENTRYP PFNGLSHADERSOURCEPROC)(GLuint, GLsizei, const GLchar* const*, const GLint*);
+typedef void (APIENTRYP PFNGLCOMPILESHADERPROC)(GLuint);
+typedef GLuint (APIENTRYP PFNGLCREATEPROGRAMPROC)(void);
+typedef void (APIENTRYP PFNGLATTACHSHADERPROC)(GLuint, GLuint);
+typedef void (APIENTRYP PFNGLLINKPROGRAMPROC)(GLuint);
+typedef void (APIENTRYP PFNGLGETPROGRAMIVPROC)(GLuint, GLenum, GLint*);
+typedef void (APIENTRYP PFNGLDELETESHADERPROC)(GLuint);
+typedef void (APIENTRYP PFNGLDELETEPROGRAMPROC)(GLuint);
+typedef GLint (APIENTRYP PFNGLGETUNIFORMLOCATIONPROC)(GLuint, const GLchar*);
+typedef GLint (APIENTRYP PFNGLGETATTRIBLOCATIONPROC)(GLuint, const GLchar*);
+typedef void (APIENTRYP PFNGLUSEPROGRAMPROC)(GLuint);
+typedef void (APIENTRYP PFNGLUNIFORMMATRIX4FVPROC)(GLint, GLsizei, GLboolean, const GLfloat*);
+typedef void (APIENTRYP PFNGLUNIFORM4FPROC)(GLint, GLfloat, GLfloat, GLfloat, GLfloat);
+typedef void (APIENTRYP PFNGLUNIFORM1IPROC)(GLint, GLint);
+typedef void (APIENTRYP PFNGLGENBUFFERSPROC)(GLsizei, GLuint*);
+typedef void (APIENTRYP PFNGLBINDBUFFERPROC)(GLenum, GLuint);
+typedef void (APIENTRYP PFNGLBUFFERDATAPROC)(GLenum, GLsizeiptr, const void*, GLenum);
+typedef void (APIENTRYP PFNGLDELETEBUFFERSPROC)(GLsizei, const GLuint*);
+typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint);
+typedef void (APIENTRYP PFNGLDISABLEVERTEXATTRIBARRAYPROC)(GLuint);
+typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC)(GLuint, GLint, GLenum, GLboolean, GLsizei, const void*);
+typedef void (APIENTRYP PFNGLGENVERTEXARRAYSPROC)(GLsizei, GLuint*);
+typedef void (APIENTRYP PFNGLBINDVERTEXARRAYPROC)(GLuint);
+typedef void (APIENTRYP PFNGLACTIVETEXTUREPROC)(GLenum);
+
+static PFNGLCREATESHADERPROC p_glCreateShader = nullptr;
+static PFNGLSHADERSOURCEPROC p_glShaderSource = nullptr;
+static PFNGLCOMPILESHADERPROC p_glCompileShader = nullptr;
+static PFNGLCREATEPROGRAMPROC p_glCreateProgram = nullptr;
+static PFNGLATTACHSHADERPROC p_glAttachShader = nullptr;
+static PFNGLLINKPROGRAMPROC p_glLinkProgram = nullptr;
+static PFNGLGETPROGRAMIVPROC p_glGetProgramiv = nullptr;
+static PFNGLDELETESHADERPROC p_glDeleteShader = nullptr;
+static PFNGLDELETEPROGRAMPROC p_glDeleteProgram = nullptr;
+static PFNGLGETUNIFORMLOCATIONPROC p_glGetUniformLocation = nullptr;
+static PFNGLGETATTRIBLOCATIONPROC p_glGetAttribLocation = nullptr;
+static PFNGLUSEPROGRAMPROC p_glUseProgram = nullptr;
+static PFNGLUNIFORMMATRIX4FVPROC p_glUniformMatrix4fv = nullptr;
+static PFNGLUNIFORM4FPROC p_glUniform4f = nullptr;
+static PFNGLUNIFORM1IPROC p_glUniform1i = nullptr;
+static PFNGLGENBUFFERSPROC p_glGenBuffers = nullptr;
+static PFNGLBINDBUFFERPROC p_glBindBuffer = nullptr;
+static PFNGLBUFFERDATAPROC p_glBufferData = nullptr;
+static PFNGLDELETEBUFFERSPROC p_glDeleteBuffers = nullptr;
+static PFNGLENABLEVERTEXATTRIBARRAYPROC p_glEnableVertexAttribArray = nullptr;
+static PFNGLDISABLEVERTEXATTRIBARRAYPROC p_glDisableVertexAttribArray = nullptr;
+static PFNGLVERTEXATTRIBPOINTERPROC p_glVertexAttribPointer = nullptr;
+static PFNGLGENVERTEXARRAYSPROC p_glGenVertexArrays = nullptr;
+static PFNGLBINDVERTEXARRAYPROC p_glBindVertexArray = nullptr;
+static PFNGLACTIVETEXTUREPROC p_glActiveTexture = nullptr;
+
+// Resolve all modern entry points. Requires a current GL context. Returns false if unavailable.
+static bool LoadModernGL() {
+    static bool tried = false, ok = false;
+    if (tried) return ok;
+    tried = true;
+
+    HMODULE ogl = GetModuleHandleW(L"opengl32.dll");
+    auto get = [&](const char* name) -> void* {
+        void* p = (void*)wglGetProcAddress(name);
+        if (!p || p == (void*)-1 || p == (void*)1 || p == (void*)2 || p == (void*)3) {
+            p = ogl ? (void*)GetProcAddress(ogl, name) : nullptr;
+        }
+        return p;
+    };
+
+    p_glCreateShader = (PFNGLCREATESHADERPROC)get("glCreateShader");
+    p_glShaderSource = (PFNGLSHADERSOURCEPROC)get("glShaderSource");
+    p_glCompileShader = (PFNGLCOMPILESHADERPROC)get("glCompileShader");
+    p_glCreateProgram = (PFNGLCREATEPROGRAMPROC)get("glCreateProgram");
+    p_glAttachShader = (PFNGLATTACHSHADERPROC)get("glAttachShader");
+    p_glLinkProgram = (PFNGLLINKPROGRAMPROC)get("glLinkProgram");
+    p_glGetProgramiv = (PFNGLGETPROGRAMIVPROC)get("glGetProgramiv");
+    p_glDeleteShader = (PFNGLDELETESHADERPROC)get("glDeleteShader");
+    p_glDeleteProgram = (PFNGLDELETEPROGRAMPROC)get("glDeleteProgram");
+    p_glGetUniformLocation = (PFNGLGETUNIFORMLOCATIONPROC)get("glGetUniformLocation");
+    p_glGetAttribLocation = (PFNGLGETATTRIBLOCATIONPROC)get("glGetAttribLocation");
+    p_glUseProgram = (PFNGLUSEPROGRAMPROC)get("glUseProgram");
+    p_glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)get("glUniformMatrix4fv");
+    p_glUniform4f = (PFNGLUNIFORM4FPROC)get("glUniform4f");
+    p_glUniform1i = (PFNGLUNIFORM1IPROC)get("glUniform1i");
+    p_glGenBuffers = (PFNGLGENBUFFERSPROC)get("glGenBuffers");
+    p_glBindBuffer = (PFNGLBINDBUFFERPROC)get("glBindBuffer");
+    p_glBufferData = (PFNGLBUFFERDATAPROC)get("glBufferData");
+    p_glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)get("glDeleteBuffers");
+    p_glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)get("glEnableVertexAttribArray");
+    p_glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)get("glDisableVertexAttribArray");
+    p_glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)get("glVertexAttribPointer");
+    p_glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)get("glGenVertexArrays");
+    p_glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)get("glBindVertexArray");
+    p_glActiveTexture = (PFNGLACTIVETEXTUREPROC)get("glActiveTexture");
+
+    ok = p_glCreateShader && p_glShaderSource && p_glCompileShader &&
+         p_glCreateProgram && p_glAttachShader && p_glLinkProgram && p_glGetProgramiv &&
+         p_glGetUniformLocation && p_glGetAttribLocation && p_glUseProgram &&
+         p_glUniformMatrix4fv && p_glUniform4f && p_glUniform1i &&
+         p_glGenBuffers && p_glBindBuffer && p_glBufferData &&
+         p_glEnableVertexAttribArray && p_glDisableVertexAttribArray && p_glVertexAttribPointer &&
+         p_glActiveTexture;
+    OutputDebugStringA(ok ? "[WatermarkDLL] Modern GL entry points loaded\n"
+                          : "[WatermarkDLL] Modern GL entry points UNAVAILABLE\n");
+    return ok;
+}

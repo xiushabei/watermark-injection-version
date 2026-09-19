@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Mine|Win32">
+      <Configuration>Mine</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Mine|x64">
+      <Configuration>Mine</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{32c8d854-67ed-49cc-89c2-b34954c2b13e}</ProjectGuid>
+    <RootNamespace>InfiniteGUIDLL</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Mine|Win32'">
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Label="Configuration" Condition="'$(Configuration)|$(Platform)'=='Mine|x64'">
+    <PlatformToolset>v143</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>D:\vcpkg_manual\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>D:\vcpkg_manual\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>glew32.lib;opengl32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>D:\watermark injecting Version\dll\</OutDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <PostBuildEvent>
+      <Command>copy /Y "D:\vcpkg_manual\bin\glew32.dll" "$(OutDir)"</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Mine|x64'">
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="AboutsPanel.h" />
+    <ClInclude Include="AffixModule.h" />
+    <ClInclude Include="Anim.h" />
+    <ClInclude Include="AnimButtonBase.h" />
+    <ClInclude Include="App.h" />
+    <ClInclude Include="AudioManager.h" />
+    <ClInclude Include="AutoText.h" />
+    <ClInclude Include="BilibiliFansItem.h" />
+    <ClInclude Include="Blur.h" />
+    <ClInclude Include="CategoryBar.h" />
+    <ClInclude Include="ClickCircle.h" />
+    <ClInclude Include="ClickEffect.h" />
+    <ClInclude Include="ClickEffectBase.h" />
+    <ClInclude Include="ClickSound.h" />
+    <ClInclude Include="ConfigManager.h" />
+    <ClInclude Include="ConfigSelector.h" />
+    <ClInclude Include="CounterItem.h" />
+    <ClInclude Include="CPSDetector.h" />
+    <ClInclude Include="CPSItem.h" />
+    <ClInclude Include="DanmakuItem.h" />
+    <ClInclude Include="detours\include\detours.h" />
+    <ClInclude Include="detours\include\detver.h" />
+    <ClInclude Include="detours\include\syelog.h" />
+    <ClInclude Include="detours\lazy_importer.hpp" />
+    <ClInclude Include="detours\titan_hook.h" />
+    <ClInclude Include="FileCountItem.h" />
+    <ClInclude Include="FileUtils.h" />
+    <ClInclude Include="fonts.h" />
+    <ClInclude Include="FontSelector.h" />
+    <ClInclude Include="fonts\AlibabaPuHuiTi-3-85-Bold.h" />
+    <ClInclude Include="fonts\IconFont.h" />
+    <ClInclude Include="FpsItem.h" />
+    <ClInclude Include="GameKeyBind.h" />
+    <ClInclude Include="GameStateDetector.h" />
+    <ClInclude Include="GameWindowTool.h" />
+    <ClInclude Include="GlobalConfig.h" />
+    <ClInclude Include="GlobalSettings.h" />
+    <ClInclude Include="GlobalWindowStyle.h" />
+    <ClInclude Include="gl\glew.h" />
+    <ClInclude Include="gl\glxew.h" />
+    <ClInclude Include="gl\wglew.h" />
+    <ClInclude Include="gui.h" />
+    <ClInclude Include="GuiFrameLimiter.h" />
+    <ClInclude Include="HttpClient.h" />
+    <ClInclude Include="HttpUpdateWorker.h" />
+    <ClInclude Include="Images.h" />
+    <ClInclude Include="ImGuiStd.h" />
+    <ClInclude Include="ImGuiSty.h" />
+    <ClInclude Include="imgui\imconfig.h" />
+    <ClInclude Include="imgui\imgui.h" />
+    <ClInclude Include="imgui\imgui_impl_opengl2.h" />
+    <ClInclude Include="imgui\imgui_impl_opengl3.h" />
+    <ClInclude Include="imgui\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="imgui\imgui_impl_win32.h" />
+    <ClInclude Include="imgui\imgui_internal.h" />
+    <ClInclude Include="imgui\imstb_rectpack.h" />
+    <ClInclude Include="imgui\imstb_textedit.h" />
+    <ClInclude Include="imgui\imstb_truetype.h" />
+    <ClInclude Include="Init.hpp" />
+    <ClInclude Include="Item.h" />
+    <ClInclude Include="ItemManager.h" />
+    <ClInclude Include="KeybindModule.h" />
+    <ClInclude Include="Keybox.h" />
+    <ClInclude Include="KeyState.h" />
+    <ClInclude Include="KeystrokesItem.h" />
+    <ClInclude Include="MainMenuButton.hpp" />
+    <ClInclude Include="MainPanel.h" />
+    <ClInclude Include="Menu.h" />
+    <ClInclude Include="menuRule.h" />
+    <ClInclude Include="miniaudio\miniaudio.h" />
+    <ClInclude Include="ModuleButton.hpp" />
+    <ClInclude Include="ModuleCard.h" />
+    <ClInclude Include="ModuleSettings.h" />
+    <ClInclude Include="ModulesPanel.h" />
+    <ClInclude Include="Motionblur.h" />
+    <ClInclude Include="MusicInfoItem.h" />
+    <ClInclude Include="MyButton.hpp" />
+    <ClInclude Include="Notification.h" />
+    <ClInclude Include="NotificationItem.h" />
+    <ClInclude Include="opengl_hook.h" />
+    <ClInclude Include="pics\KuGouMusicLogo.h" />
+    <ClInclude Include="pics\MCLogo.h" />
+    <ClInclude Include="pics\NeteaseMusicLogo.h" />
+    <ClInclude Include="SelectPanel.h" />
+    <ClInclude Include="PanelButton.hpp" />
+    <ClInclude Include="pics\MCInjector-small.h" />
+    <ClInclude Include="RenderModule.h" />
+    <ClInclude Include="SettingMenu.h" />
+    <ClInclude Include="LeftPanel.h" />
+    <ClInclude Include="SoundModule.h" />
+    <ClInclude Include="Sprint.h" />
+    <ClInclude Include="StringConverter.h" />
+    <ClInclude Include="Text.h" />
+    <ClInclude Include="TextItem.h" />
+    <ClInclude Include="TimeItem.h" />
+    <ClInclude Include="ChangeLog.h" />
+    <ClInclude Include="UpdateModule.h" />
+    <ClInclude Include="VK_Keymap.h" />
+    <ClInclude Include="WindowModule.h" />
+    <ClInclude Include="WindowSnapper.h" />
+    <ClInclude Include="WindowStyleModule.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="App.cpp" />
+    <ClCompile Include="AudioManager.cpp" />
+    <ClCompile Include="AutoText.cpp" />
+    <ClCompile Include="BilibiliFansItem.cpp" />
+    <ClCompile Include="Blur.cpp" />
+    <ClCompile Include="ClickEffect.cpp" />
+    <ClCompile Include="ConfigManager.cpp" />
+    <ClCompile Include="CounterItem.cpp" />
+    <ClCompile Include="CPSDetector.cpp" />
+    <ClCompile Include="CPSItem.cpp" />
+    <ClCompile Include="DanmakuItem.cpp" />
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="FileCountItem.cpp" />
+    <ClCompile Include="fonts.cpp" />
+    <ClCompile Include="FpsItem.cpp" />
+    <ClCompile Include="GameKeyBind.cpp" />
+    <ClCompile Include="GameStateDetector.cpp" />
+    <ClCompile Include="GameWindowTool.cpp" />
+    <ClCompile Include="GlobalConfig.cpp" />
+    <ClCompile Include="GlobalWindowStyle.cpp" />
+    <ClCompile Include="gui.cpp" />
+    <ClCompile Include="HttpClient.cpp" />
+    <ClCompile Include="HttpUpdateWorker.cpp" />
+    <ClCompile Include="Images.cpp" />
+    <ClCompile Include="imgui\imgui.cpp" />
+    <ClCompile Include="imgui\imgui_demo.cpp" />
+    <ClCompile Include="imgui\imgui_draw.cpp" />
+    <ClCompile Include="imgui\imgui_impl_opengl2.cpp" />
+    <ClCompile Include="imgui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="imgui\imgui_impl_win32.cpp" />
+    <ClCompile Include="imgui\imgui_tables.cpp" />
+    <ClCompile Include="imgui\imgui_widgets.cpp" />
+    <ClCompile Include="ItemManager.cpp" />
+    <ClCompile Include="KeyState.cpp" />
+    <ClCompile Include="KeystrokesItem.cpp" />
+    <ClCompile Include="Menu.cpp" />
+    <ClCompile Include="MoresPanel.h" />
+    <ClCompile Include="Motionblur.cpp" />
+    <ClCompile Include="MusicInfoItem.cpp" />
+    <ClCompile Include="Notification.cpp" />
+    <ClCompile Include="NotificationItem.cpp" />
+    <ClCompile Include="opengl_hook.cpp" />
+    <ClCompile Include="Sprint.cpp" />
+    <ClCompile Include="StringConverter.cpp" />
+    <ClCompile Include="Text.cpp" />
+    <ClCompile Include="TextItem.cpp" />
+    <ClCompile Include="TimeItem.cpp" />
+    <!-- <ClCompile Include="ChangeLog.cpp" /> -->
+    <ClCompile Include="WindowSnapper.cpp" />
+    <ClCompile Include="ImageOverlay.cpp" />
+    <ClCompile Include="ImageOverlayItem.cpp" />
+    <ClCompile Include="GifDecoder.cpp" />
+    <ClCompile Include="MovementController.cpp" />
+    <ClCompile Include="OverlayEditor.cpp" />
+    <ClCompile Include="OverlayPersistence.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="detours\detours.lib" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md" />
+    <None Include="TODO.md" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
