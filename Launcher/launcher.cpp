@@ -49,6 +49,8 @@ NOTIFYICONDATAW g_nid = {};
 std::wstring g_appDataPath, g_launcherDir;
 std::atomic<bool> g_running(true), g_injecting(false), g_autoInject(true);
 bool g_autoStart = true, g_hideToTray = true;
+int  g_editKey = VK_INSERT;        // edit-mode toggle key written for the DLL
+bool g_captureEditKey = false;     // UI is waiting for the next key press
 DWORD g_injectTargetPid = 0;
 CRITICAL_SECTION g_pidLock;
 std::vector<DWORD> g_injectedPids;
@@ -78,12 +80,40 @@ void LoadConfig() {
     g_autoInject = (GetPrivateProfileIntW(L"Settings", L"AutoInject", 1, ini.c_str()) != 0);
     g_autoStart = (GetPrivateProfileIntW(L"Settings", L"AutoStart", 1, ini.c_str()) != 0);
     g_hideToTray = (GetPrivateProfileIntW(L"Settings", L"HideToTray", 1, ini.c_str()) != 0);
+    int ek = GetPrivateProfileIntW(L"Settings", L"EditKey", VK_INSERT, ini.c_str());
+    if (ek >= 1 && ek <= 254) g_editKey = ek;
 }
 void SaveConfig() {
     std::wstring ini = GetIniPath();
     WritePrivateProfileStringW(L"Settings", L"AutoInject", g_autoInject ? L"1" : L"0", ini.c_str());
     WritePrivateProfileStringW(L"Settings", L"AutoStart", g_autoStart ? L"1" : L"0", ini.c_str());
     WritePrivateProfileStringW(L"Settings", L"HideToTray", g_hideToTray ? L"1" : L"0", ini.c_str());
+    wchar_t buf[16]; swprintf_s(buf, L"%d", g_editKey);
+    WritePrivateProfileStringW(L"Settings", L"EditKey", buf, ini.c_str());
+}
+
+// The injected DLL polls this file (at most every 500 ms) for the edit-mode key.
+void WriteEditKeyCfg() {
+    wchar_t appData[MAX_PATH];
+    if (FAILED(SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, appData))) return;
+    std::wstring dir = std::wstring(appData) + L"\\WatermarkDLL";
+    CreateDirectoryW(dir.c_str(), NULL);
+    std::wstring path = dir + L"\\edit_key.cfg";
+    char content[16];
+    sprintf_s(content, "%d\n", g_editKey);  // narrow ASCII: the DLL parses with ifstream >> int
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL,
+                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) return;
+    DWORD n = (DWORD)strlen(content);
+    WriteFile(f, content, n, &n, NULL);
+    CloseHandle(f);
+}
+
+std::wstring KeyName(int vk) {
+    LONG sc = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC) << 16;
+    wchar_t buf[64] = {};
+    if (GetKeyNameTextW(sc, buf, 64) && buf[0]) return buf;
+    return L"?";
 }
 void InitAppData() {
     wchar_t p[MAX_PATH]; SHGetFolderPathW(NULL, CSIDL_APPDATA, NULL, 0, p);
@@ -530,8 +560,21 @@ void RenderUI() {
     ImGui::SameLine();
     if (ImGui::Checkbox("关闭时隐藏托盘", &g_hideToTray)) SaveConfig();
 
+    // Edit-mode toggle key (consumed by the injected DLL)
+    ImGui::SetCursorPos(ImVec2(pad + 2, optY + 26));
+    ImGui::TextColored(ImVec4(0.55f, 0.58f, 0.66f, 1), "编辑模式按键:");
+    ImGui::SameLine();
+    if (g_captureEditKey) {
+        ImGui::TextColored(ImVec4(1.0f, 0.82f, 0.35f, 1), "请按下新按键... (Esc 取消)");
+    } else {
+        std::string kn = W2UTF8(KeyName(g_editKey));
+        ImGui::TextColored(ImVec4(0.42f, 1.0f, 0.55f, 1), "%s", kn.c_str());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("修改")) g_captureEditKey = true;
+    }
+
     // ---------- Log ----------
-    float logY = optY + 30;
+    float logY = optY + 58;
     ImGui::SetCursorPos(ImVec2(pad, logY));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, IM_COL32(14, 14, 20, 255));
     ImGui::BeginChild("Log", ImVec2(w - pad * 2, h - logY - 34), false);
@@ -556,6 +599,17 @@ void RenderUI() {
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM w, LPARAM l) {
+    // Edit-key capture has priority over everything (including ImGui)
+    if (g_captureEditKey && msg == WM_KEYDOWN) {
+        g_captureEditKey = false;
+        if (w != VK_ESCAPE) {
+            g_editKey = (int)w;
+            SaveConfig();
+            WriteEditKeyCfg();
+            AddLog(IM_COL32(100, 200, 100, 255), L"编辑模式按键已改为 %s", KeyName(g_editKey).c_str());
+        }
+        return 0;
+    }
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, w, l)) return 1;
 
     if (msg == WM_TRAYICON) {
@@ -612,6 +666,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR cmd, int) {
     }
     InitializeCriticalSection(&g_pidLock);
     LoadConfig();
+    WriteEditKeyCfg();  // make sure the DLL sees the configured edit-mode key
     InitCommonControls();
     InitAppData();
     g_embeddedDllOk = ExtractEmbeddedDll();

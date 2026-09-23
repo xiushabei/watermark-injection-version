@@ -36,8 +36,8 @@ PNG / JPG / BMP / GIF（含多帧动画）贴图，支持拖放添加、定点�
 
 1. 编译或用 Release 拿到 `WatermarkInjectionLauncher.exe`（内嵌最新 DLL）；
 2. 运行启动器，它会常驻系统托盘并**自动扫描 / 注入已启动的 Minecraft**；
-3. 把图片文件**直接拖进游戏窗口**即添加贴图，打开聊天栏自动进入编辑模式
-   （拖动移动、滚轮缩放、右键菜单选择运动模式）。
+3. 把图片文件**直接拖进游戏窗口**即添加贴图；按编辑模式键（默认 Insert）
+   进入编辑模式后拖动移动、滚轮缩放、双击切换贴图隐藏、右键菜单选择运动模式。
 
 配置文件与贴图备份存放在 `%APPDATA%/WatermarkDLL/`（`overlays.json` + `images/`），
 重装 / 换机时拷贝这个目录即可恢复全部贴图与位置。
@@ -81,15 +81,18 @@ powershell -ExecutionPolicy Bypass -File Launcher\build_launcher.ps1
   三个实例同时开也只会有一个生效
 - **托盘常驻**：关闭窗口最小化到托盘，可一键显示 / 注入 / 退出
 - **进程列表**：手动选择任意 Minecraft 进程注入
+- **编辑模式按键设置**：界面一键改键（默认 Insert），写入
+  `%APPDATA%/WatermarkDLL/edit_key.cfg`，DLL 每 500ms 轮询，已注入的游戏
+  进程内即时生效
 - **运行日志**：界面内实时显示注入状态与错误
 
 ## 核心机制（DLL）
 
 - **渲染**：OpenGL Core Profile 管线（shader + VBO），渲染前逐项保存、渲染后
   逐项恢复游戏 GL 状态，不污染 Minecraft 的上下文
-- **屏幕检测**：双模式自动切换——优先 JNI 反射读取 Minecraft 内部状态
-  （多映射名自动解析，含 Fabric intermediary，跨版本稳定）；JNI 不可用时降级为
-  纯 Win32 光标可见性检测，**不依赖任何混淆类名，适配所有版本**
+- **编辑模式**：纯按键切换（默认 Insert，启动器可改），不依赖聊天栏 / GUI
+  屏幕检测；编辑模式下双击贴图切换隐藏状态，隐藏贴图平时不渲染、
+  编辑模式下淡显以便找回
 - **GUI 缩放**：读取 `.minecraft/options.txt` 的 `guiScale`，贴图坐标与原版
   mod 完全一致，跨分辨率 / GUI 缩放不漂移
 - **窗口等比缩放**：记录基准窗口宽度，窗口改变大小时所有贴图等比缩放，
@@ -103,8 +106,8 @@ powershell -ExecutionPolicy Bypass -File Launcher\build_launcher.ps1
 | 操作 | 说明 |
 |------|------|
 | 拖放文件到游戏窗口 | 添加 PNG/JPG/BMP/GIF 贴图 |
-| 打开聊天栏 | 进入编辑模式（自动检测） |
-| Insert 键 | 手动切换编辑模式 |
+| 编辑模式键（默认 Insert，启动器可改） | 进入 / 退出编辑模式 |
+| 双击贴图 | 切换该贴图隐藏/显示（编辑模式） |
 | 左键拖动 | 移动贴图（编辑模式） |
 | 右键 | 打开菜单：定点移动 / 随机运动 / 随机展示 / 重置运动 / 删除 |
 | 滚轮 | 缩放贴图（编辑模式） |

@@ -247,11 +247,15 @@ int g_guiScale = 1;            // Minecraft GUI scale factor (version-independen
 // The saved `scale` never includes the ratio, so restoring the window size restores
 // the exact original display size.
 double g_winScaleRatio = 1.0;
-int g_detectMode = 0;          // 0=unknown 1=JNI 2=cursor-compat
 WNDPROC g_origWndProc = nullptr;
 bool g_menuEnabled = false;
-bool g_chatScreenOpen = false;
-bool g_manualEditMode = false; // Manual edit mode toggle (Insert key)
+bool g_manualEditMode = false; // Edit mode toggle (configurable key, default Insert)
+
+// Edit-mode toggle key (virtual-key code). Configurable from the launcher,
+// which writes %APPDATA%/WatermarkDLL/edit_key.cfg; we poll the file.
+int g_editKey = VK_INSERT;
+std::wstring g_editKeyCfgPath;
+FILETIME g_editKeyCfgTime = {};
 
 // Context menu state
 bool g_showMenu = false;
@@ -275,6 +279,10 @@ static const wchar_t* const MENU_ITEMS[MENU_ITEM_COUNT] = {
 int g_mouseX = 0;
 int g_mouseY = 0;
 
+// Double-click detection (edit mode: double-click toggles overlay hidden state)
+DWORD g_lastClickTime = 0;
+std::shared_ptr<ImageOverlay> g_lastClickTarget = nullptr;
+
 // ImageOverlay class
 class ImageOverlay {
 public:
@@ -290,6 +298,7 @@ public:
     double xFraction = 0.1;
     double yFraction = 0.1;
     float scale = 1.0f;
+    bool visible = true;
 
     MovementMode movementMode = MovementMode::NONE;
     std::vector<Waypoint> waypoints;
@@ -349,6 +358,8 @@ public:
         frameTextures.clear();
     }
 
+    bool isVisible() const { return visible; }
+    void toggleVisible() { visible = !visible; }
     MovementMode getMovementMode() const { return movementMode; }
     void setMovementMode(MovementMode m) { movementMode = m; }
     bool needsTextureRegistration() const { return textureNeedsRegistration; }
@@ -488,7 +499,7 @@ public:
     }
 
     void tickMovement(int screenW, int screenH) {
-        if (movementMode == MovementMode::NONE) return;
+        if (movementMode == MovementMode::NONE || !visible) return;
         int imgW = cachedDisplayW;
         int imgH = cachedDisplayH;
 
@@ -771,7 +782,7 @@ public:
     std::shared_ptr<ImageOverlay> getOverlayAt(int mx, int my) {
         for (int i = static_cast<int>(overlays.size()) - 1; i >= 0; i--) {
             auto& ov = overlays[i];
-            if (ov->containsPoint(mx, my)) return ov;
+            if (ov->containsPoint(mx, my) && (ov->isVisible() || interacting)) return ov;
         }
         return nullptr;
     }
@@ -779,7 +790,7 @@ public:
     std::shared_ptr<ImageOverlay> getOverlayAtCorner(int mx, int my, int cs) {
         for (int i = static_cast<int>(overlays.size()) - 1; i >= 0; i--) {
             auto& ov = overlays[i];
-            if (ov->isOverCorner(mx, my, cs)) return ov;
+            if (ov->isOverCorner(mx, my, cs) && (ov->isVisible() || interacting)) return ov;
         }
         return nullptr;
     }
@@ -838,7 +849,8 @@ public:
                 file << "],\n";
                 file << "    \"currentWaypointIndex\": " << ov->currentWaypointIndex << ",\n";
                 file << "    \"randDX\": " << fmtDouble(ov->randMoveDX) << ",\n";
-                file << "    \"randDY\": " << fmtDouble(ov->randMoveDY) << "\n";
+                file << "    \"randDY\": " << fmtDouble(ov->randMoveDY) << ",\n";
+                file << "    \"visible\": " << (ov->visible ? "true" : "false") << "\n";
                 file << "  }";
                 if (i < overlays.size() - 1) file << ",";
                 file << "\n";
@@ -894,6 +906,7 @@ public:
                     movementModeFromString(item.getStr("movementMode", "NONE")),
                     wps, (int)item.getNum("currentWaypointIndex", 0),
                     item.getNum("randDX", 0.0), item.getNum("randDY", 0.0));
+                overlay->visible = item.getBool("visible", true);
                 overlays.push_back(overlay);
                 loaded++;
             }
@@ -1479,8 +1492,9 @@ void renderOverlay(ImageOverlay& overlay) {
     float y = (float)(overlay.cachedY * g_guiScale);
     float w = (float)(overlay.cachedDisplayW * g_guiScale);
     float h = (float)(overlay.cachedDisplayH * g_guiScale);
+    float alpha = overlay.isVisible() ? 1.0f : 0.3f;
 
-    OverlayGL::DrawQuad(texture, x, y, w, h, 1.0f, 1.0f, 1.0f, 1.0f);
+    OverlayGL::DrawQuad(texture, x, y, w, h, 1.0f, 1.0f, 1.0f, alpha);
 }
 
 void renderSelectionBorder(const ImageOverlay& overlay) {
@@ -1499,6 +1513,30 @@ void renderSelectionBorder(const ImageOverlay& overlay) {
     float cx = (float)((overlay.cachedX + overlay.cachedDisplayW) * g_guiScale);
     float cy = (float)((overlay.cachedY + overlay.cachedDisplayH) * g_guiScale);
     fillRect((int)(cx - hs / 2), (int)(cy - hs / 2), (int)hs, (int)hs, 0.0f, 1.0f, 0.0f, 1.0f);
+}
+
+// Poll the launcher-written key config (%APPDATA%/WatermarkDLL/edit_key.cfg,
+// plain decimal VK code). Checked at most every 500 ms from the render thread.
+void UpdateEditKeyConfig() {
+    static ULONGLONG lastCheckMs = 0;
+    ULONGLONG now = GetTickCount64();
+    if (now - lastCheckMs < 500) return;
+    lastCheckMs = now;
+    if (g_editKeyCfgPath.empty()) return;
+
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesExW(g_editKeyCfgPath.c_str(), GetFileExInfoStandard, &fad)) return;
+    if (CompareFileTime(&fad.ftLastWriteTime, &g_editKeyCfgTime) == 0) return;
+    g_editKeyCfgTime = fad.ftLastWriteTime;
+
+    std::ifstream file(g_editKeyCfgPath);
+    int code = 0;
+    file >> code;
+    if (!file.fail() && code >= 1 && code <= 254 && code != g_editKey) {
+        g_editKey = code;
+        OutputDebugStringA(("[WatermarkDLL] Edit-mode key changed to VK " +
+                            std::to_string(code) + "\n").c_str());
+    }
 }
 
 void renderOverlays() {
@@ -1547,8 +1585,11 @@ void renderOverlays() {
         goto restore;
     }
 
-    // Render all overlays (cachedX/Y live in Minecraft scaled coordinates)
+    // Render all overlays (cachedX/Y live in Minecraft scaled coordinates).
+    // Hidden overlays only draw (dimmed) while edit mode is on, so they can
+    // be found and un-hidden; outside edit mode they are fully skipped.
     for (auto& overlay : g_overlayManager.overlays) {
+        if (!overlay->isVisible() && !g_overlayManager.interacting) continue;
         overlay->updateFromScreenSize(g_screenW / g_guiScale, g_screenH / g_guiScale);
         renderOverlay(*overlay);
 
@@ -1657,8 +1698,8 @@ LRESULT CALLBACK WndProcHook(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
                     return 0;
                 }
 
-                // Insert key to toggle edit mode manually
-                if (wParam == VK_INSERT) {
+                // Configurable key toggles edit mode (default: Insert)
+                if (wParam == g_editKey) {
                     g_manualEditMode = !g_manualEditMode;
                     g_overlayManager.interacting = g_manualEditMode;
                     g_overlayManager.paused = g_manualEditMode;
@@ -1776,14 +1817,26 @@ LRESULT CALLBACK WndProcHook(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
                 // Check if clicking on overlay (drag)
                 ov = g_overlayManager.getOverlayAt(sx, sy);
                 if (ov) {
-                    ov->startDrag(sx, sy);
-                    g_overlayManager.selectedOverlay = ov;
-                    OutputDebugStringA("[WatermarkDLL] Started dragging overlay\n");
+                    // Double-click toggles the overlay hidden state (edit mode)
+                    DWORD now = GetTickCount();
+                    if (ov == g_lastClickTarget && (now - g_lastClickTime) < 350) {
+                        ov->toggleVisible();
+                        g_overlayManager.saveOverlays();
+                        g_lastClickTarget = nullptr;
+                        OutputDebugStringA("[WatermarkDLL] Double-click: toggled visibility\n");
+                    } else {
+                        ov->startDrag(sx, sy);
+                        g_overlayManager.selectedOverlay = ov;
+                        g_lastClickTarget = ov;
+                        g_lastClickTime = now;
+                        OutputDebugStringA("[WatermarkDLL] Started dragging overlay\n");
+                    }
                     return 0;
                 }
                 // Missed everything: clear selection and pass the click to the game
                 // (fixes main-menu / inventory clicks dying when edit mode is on)
                 g_overlayManager.selectedOverlay = nullptr;
+                g_lastClickTarget = nullptr;
             }
             break;
         }
@@ -1928,9 +1981,6 @@ BOOL WINAPI wglSwapBuffersDetour(HDC hdc) {
         ChangeWindowMessageFilterEx(g_hwnd, WM_COPYDATA, MSGFLT_ALLOW, nullptr);
         ChangeWindowMessageFilterEx(g_hwnd, WM_COPYGLOBALDATA, MSGFLT_ALLOW, nullptr);
 
-        // Initialize Java detector for chat screen detection
-        JavaDetector::initialize();
-
         // Initialize modern GL pipeline (core-profile safe shader + VBO)
         OverlayGL::EnsureInit();
 
@@ -1965,66 +2015,9 @@ BOOL WINAPI wglSwapBuffersDetour(HDC hdc) {
         g_winScaleRatio = scaledW / static_cast<double>(refScaledW);
     }
 
-    // Screen detection: JNI chat detection (version-specific) with automatic
-    // fallback to cursor-visibility detection (works on ALL versions, ref: InfiniteGUI-DLL)
-    if (!g_manualEditMode) {
-        bool screenOpen;
-        if (JavaDetector::isDetectionActive()) {
-            screenOpen = JavaDetector::isChatScreenOpen();
-            if (g_detectMode != 1) {
-                g_detectMode = 1;
-                OutputDebugStringA("[WatermarkDLL] Screen detection: JNI mode\n");
-            }
-        } else {
-            // Compat mode: enter edit mode only when the cursor became visible
-            // after having been hidden (i.e. player was in-game and opened a GUI).
-            // The main menu shows the cursor from the start - never auto-edit there.
-            static bool cursorWasHidden = false;
-            static int unfocusedFrames = 0;
-            bool focused = Compat::IsGameWindowFocused();
-            // While dragging a file from Explorer the game window is unfocused
-            // for the WHOLE drag (often several seconds) - far longer than any
-            // debounce window, so the latch must never be reset on unfocus.
-            // Focus only gates the current screenOpen state: alt-tab keeps edit
-            // mode off while away and restores it on return (latch survives).
-            bool focusStable = focused;
-            if (!focused) {
-                ++unfocusedFrames;
-                if (unfocusedFrames <= 60) focusStable = true;  // transient flicker
-            } else {
-                unfocusedFrames = 0;
-            }
-            screenOpen = focusStable && cursorWasHidden && Compat::IsMouseCursorVisible();
-            if (g_detectMode != 2) {
-                g_detectMode = 2;
-                OutputDebugStringA("[WatermarkDLL] Screen detection: cursor-compat mode (all versions)\n");
-            }
-        }
-
-        bool chatOpen = screenOpen;
-        if (chatOpen != g_chatScreenOpen) {
-            g_chatScreenOpen = chatOpen;
-            g_overlayManager.interacting = chatOpen;
-            g_overlayManager.paused = chatOpen;
-
-            if (chatOpen) {
-                // Release cursor lock once on entering edit mode (only if hidden,
-                // to avoid unbalancing the cursor display counter)
-                ClipCursor(NULL);
-                ReleaseCapture();
-                CURSORINFO ci; ci.cbSize = sizeof(ci);
-                if (GetCursorInfo(&ci) && !(ci.flags & CURSOR_SHOWING)) {
-                    ShowCursor(TRUE);
-                }
-                OutputDebugStringA("[WatermarkDLL] Screen opened - entering edit mode\n");
-            } else {
-                OutputDebugStringA("[WatermarkDLL] Screen closed - exiting edit mode\n");
-                // Deselect overlay when closing screen
-                g_overlayManager.selectedOverlay = nullptr;
-                g_showMenu = false;
-            }
-        }
-    }
+    // Edit-mode toggle key is configurable from the launcher (default Insert);
+    // it writes %APPDATA%/WatermarkDLL/edit_key.cfg, polled here.
+    UpdateEditKeyConfig();
 
     // Keep cursor unlocked while in edit mode (game re-locks every frame otherwise)
     if (g_overlayManager.interacting) {
@@ -2047,6 +2040,13 @@ BOOL WINAPI wglSwapBuffersDetour(HDC hdc) {
 // Main thread
 DWORD WINAPI MainThread(LPVOID lpParam) {
     Sleep(3000); // Wait for Minecraft to initialize
+
+    // Config file with the edit-mode key written by the launcher
+    wchar_t* appData = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, nullptr, &appData))) {
+        g_editKeyCfgPath = std::wstring(appData) + L"\\WatermarkDLL\\edit_key.cfg";
+        CoTaskMemFree(appData);
+    }
 
     // Initialize COM for WIC (Windows Imaging Component)
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -2081,15 +2081,6 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     // Main loop
     while (!g_isDetaching) {
         Sleep(100);
-        
-        // Periodically check Java detector (in case it wasn't initialized at startup)
-        static bool javaInitialized = false;
-        if (!javaInitialized) {
-            javaInitialized = JavaDetector::initialize();
-            if (javaInitialized) {
-                OutputDebugStringA("[WatermarkDLL] Java detector initialized\n");
-            }
-        }
     }
 
     // Cleanup
@@ -2103,8 +2094,7 @@ DWORD WINAPI MainThread(LPVOID lpParam) {
     }
 
     g_overlayManager.clearAll();
-    JavaDetector::shutdown();
-    
+
     // Uninitialize COM
     CoUninitialize();
     OutputDebugStringA("[WatermarkDLL] COM uninitialized\n");
